@@ -73,12 +73,31 @@ interface GameState {
     sitDown: (playerId: number, seatIndex: number, buyInAmount: number) => void;
     standUp: () => void;
     nextPhase: () => void;
+    updateProfile: (name: string, avatar: string) => void;
+    logout: () => void;
 
 }
 
 // --- Zustand Store 实现 ---
 
 export const useGameStore = create<GameState>((set, get) => ({
+    updateProfile: (name, avatar) => {
+        const { players, myPlayerId } = get();
+        // 更新 players 数组里那个代表"我"的人
+        const updatedPlayers = players.map(p =>
+            p.id === myPlayerId ? { ...p, name, avatar } : p
+        );
+        set({ players: updatedPlayers });
+    },
+
+    logout: () => {
+        set({
+            myPlayerId: null,
+            roomId: null,
+            players: [], // 清空当前缓存的玩家
+            // 注意：不要清空 settings，那些应该 persist
+        });
+    },
     nextPhase: () => {
         const { stage, communityCards, players, myPlayerId } = get();
 
