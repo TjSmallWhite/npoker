@@ -3,6 +3,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+
+@theme {
+  --color-table-felt: #15803d;      /* 对应 bg-table-felt */
+  --color-table-felt-dark: #14532d; /* 对应 bg-table-felt-dark */
+  --color-table-bg: #022c22;        /* 对应 bg-table-bg */
+
+  /* 扑克牌颜色 */
+  --color-poker-red: #dc2626;       /* 对应 text-poker-red */
+  --color-poker-black: #0f172a;     /* 对应 text-poker-black */
+  --color-poker-back: #1e40af;      /* 对应 bg-poker-back */
+
+  /* 金币与高亮 */
+  --color-gold-main: #eab308;       /* 对应 bg-gold-main */
+  --color-gold-light: #fef08a;
+  --color-gold-shadow: #854d0e;
+
+  --radius: 0.625rem;
+
+}
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -44,6 +63,7 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+
 }
 
 :root {

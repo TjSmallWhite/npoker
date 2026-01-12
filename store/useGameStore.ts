@@ -34,6 +34,7 @@ export type GameStage = 'PREFLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';
 
 interface GameState {
     // 基础信息
+    login: (username: string, password: string, avatar: string) => Promise<boolean>;
     roomId: string | null;
     stage: GameStage;
     pot: number;          // 总底池
@@ -61,6 +62,33 @@ interface GameState {
 // --- Zustand Store 实现 ---
 
 export const useGameStore = create<GameState>((set, get) => ({
+    login: async (username, password, avatar) => {
+        // 模拟网络请求
+        console.log(`Logging in with: ${username} / ${password}`);
+
+        // 模拟生成 ID
+        const myId = Math.floor(Math.random() * 10000) + 1000;
+
+        set({
+            myPlayerId: myId,
+            players: [
+                {
+                    id: myId,
+                    name: username, // 使用用户名作为显示名
+                    avatar: avatar,
+                    chips: 10000,
+                    position: 0,
+                    status: 'active',
+                    cards: null,
+                    bet: 0,
+                    lastAction: null,
+                    isDealer: false,
+                    timeLeft: 0
+                }
+            ]
+        });
+        return true;
+    },
     // 初始状态
     roomId: null,
     stage: 'PREFLOP',
