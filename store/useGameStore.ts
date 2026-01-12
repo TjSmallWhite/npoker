@@ -30,6 +30,19 @@ export interface Player {
 
 export type GameStage = 'PREFLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';
 
+const MOCK_DECK: Card[] = [
+    { suite: '♠', rank: 'A', code: 'As' }, { suite: '♥', rank: 'K', code: 'Kh' }, // Hero
+    { suite: '♣', rank: '2', code: '2c' }, { suite: '♦', rank: '7', code: '7d' }, // Bot
+    // Flop
+    { suite: '♠', rank: 'J', code: 'Js' },
+    { suite: '♥', rank: '10', code: 'Th' },
+    { suite: '♣', rank: '5', code: '5c' },
+    // Turn
+    { suite: '♦', rank: 'Q', code: 'Qd' },
+    // River
+    { suite: '♠', rank: 'K', code: 'Ks' },
+];
+
 // --- Store 状态接口 ---
 
 interface GameState {
@@ -57,11 +70,81 @@ interface GameState {
     updateGameState: (payload: Partial<GameState>) => void; // 接收后端 WebSocket 推送的大更新
     playerAction: (playerId: number, action: PlayerAction, amount?: number) => void;
     resetRound: () => void;
+    sitDown: (playerId: number, seatIndex: number, buyInAmount: number) => void;
+    standUp: () => void;
+    nextPhase: () => void;
+
 }
 
 // --- Zustand Store 实现 ---
 
 export const useGameStore = create<GameState>((set, get) => ({
+    nextPhase: () => {
+        const { stage, communityCards, players, myPlayerId } = get();
+
+        // 简单的状态机
+        switch (stage) {
+            case 'PREFLOP':
+                // 进入 FLOP：发 3 张公共牌
+                set({
+                    stage: 'FLOP',
+                    communityCards: [MOCK_DECK[4], MOCK_DECK[5], MOCK_DECK[6]],
+                    pot: 2400 // 模拟有人下注导致底池变大
+                });
+                break;
+
+            case 'FLOP':
+                // 进入 TURN：发第 4 张
+                set({
+                    stage: 'TURN',
+                    communityCards: [...communityCards, MOCK_DECK[7]],
+                    pot: 3500
+                });
+                break;
+
+            case 'TURN':
+                // 进入 RIVER：发第 5 张
+                set({
+                    stage: 'RIVER',
+                    communityCards: [...communityCards, MOCK_DECK[8]],
+                    pot: 5000
+                });
+                break;
+
+            case 'RIVER':
+                // 进入 SHOWDOWN：摊牌 (给所有机器人发牌)
+                const showdownPlayers = players.map(p => {
+                    if (p.id === myPlayerId) return p; // 自己已有牌
+                    // 给机器人随机两张牌用于展示
+                    return {
+                        ...p,
+                        cards: [{ suite: '♦', rank: '2', code: '2d' }, { suite: '♣', rank: '7', code: '7c' }]
+                    };
+                });
+                set({
+                    stage: 'SHOWDOWN',
+                    players: showdownPlayers,
+                    winnerIds: [myPlayerId!] // 假设我赢了
+                });
+                break;
+
+            case 'SHOWDOWN':
+                // 重置下一局
+                get().resetRound(); // 调用你之前写好的 resetRound
+                // 重新发手牌 (Preflop)
+                set({
+                    stage: 'PREFLOP',
+                    // 模拟发牌给 Hero
+                    players: get().players.map(p => {
+                        if (p.id === myPlayerId) {
+                            return { ...p, cards: [MOCK_DECK[0], MOCK_DECK[1]] };
+                        }
+                        return p;
+                    })
+                });
+                break;
+        }
+    },
     login: async (username, password, avatar) => {
         // 模拟网络请求
         console.log(`Logging in with: ${username} / ${password}`);
@@ -147,5 +230,39 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastAction: null,
             status: p.chips > 0 ? 'active' : 'sitting_out'
         }))
-    })
+    }),
+    sitDown: (playerId, seatIndex, buyInAmount) => {
+        const { players } = get();
+
+        // 检查该座位是否有人
+        if (players.find(p => p.position === seatIndex)) return;
+
+        // 构造新玩家对象
+        const newPlayer: any = { // 这里为了省事用了any，实际请用 Player 类型
+            id: playerId,
+            name: "Hero", // 应该从 UserProfile 取
+            avatar: "/avatars/1.png",
+            chips: buyInAmount, // 带入的钱
+            position: seatIndex,
+            status: 'active',
+            cards: null,
+            bet: 0,
+            lastAction: null,
+            isDealer: false,
+            timeLeft: 30
+        };
+
+        set({
+            players: [...players, newPlayer],
+            myPlayerId: playerId // 标记我自己坐下了
+        });
+    },
+
+    standUp: () => {
+        const { players, myPlayerId } = get();
+        set({
+            players: players.filter(p => p.id !== myPlayerId),
+            myPlayerId: null // 变成旁观者
+        });
+    }
 }));

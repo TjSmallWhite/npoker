@@ -5,7 +5,7 @@ import {motion} from "framer-motion";
 export type Suite = '♠' | '♥' | '♣' | '♦';
 export type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K';
 
-interface CardProps {
+export interface CardProps {
     rank?: Rank;
     suite?: Suite;
     hidden?: boolean; // 是否是牌背
