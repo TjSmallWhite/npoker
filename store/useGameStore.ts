@@ -1,5 +1,6 @@
-import { create } from 'zustand';
-
+import {create} from 'zustand';
+import api from '@/lib/api';
+import {toast} from "sonner";
 // --- 类型定义 (Types) ---
 
 export type Suite = '♠' | '♥' | '♣' | '♦';
@@ -31,22 +32,35 @@ export interface Player {
 export type GameStage = 'PREFLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN';
 
 const MOCK_DECK: Card[] = [
-    { suite: '♠', rank: 'A', code: 'As' }, { suite: '♥', rank: 'K', code: 'Kh' }, // Hero
-    { suite: '♣', rank: '2', code: '2c' }, { suite: '♦', rank: '7', code: '7d' }, // Bot
+    {suite: '♠', rank: 'A', code: 'As'}, {suite: '♥', rank: 'K', code: 'Kh'}, // Hero
+    {suite: '♣', rank: '2', code: '2c'}, {suite: '♦', rank: '7', code: '7d'}, // Bot
     // Flop
-    { suite: '♠', rank: 'J', code: 'Js' },
-    { suite: '♥', rank: '10', code: 'Th' },
-    { suite: '♣', rank: '5', code: '5c' },
+    {suite: '♠', rank: 'J', code: 'Js'},
+    {suite: '♥', rank: '10', code: 'Th'},
+    {suite: '♣', rank: '5', code: '5c'},
     // Turn
-    { suite: '♦', rank: 'Q', code: 'Qd' },
+    {suite: '♦', rank: 'Q', code: 'Qd'},
     // River
-    { suite: '♠', rank: 'K', code: 'Ks' },
+    {suite: '♠', rank: 'K', code: 'Ks'},
 ];
+
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    avatar: string | null;
+    chips: string; // decimal 在 JSON 里通常是 string，前端需转 number
+    gems: string;
+    vip_level: number;
+}
 
 // --- Store 状态接口 ---
 
 interface GameState {
     // 基础信息
+    token: string | null;
+    currentUser: User | null;
+    isAuthenticated: boolean;
     login: (username: string, password: string, avatar: string) => Promise<boolean>;
     roomId: string | null;
     stage: GameStage;
@@ -55,7 +69,7 @@ interface GameState {
 
     // 核心数据
     communityCards: Card[];
-    players: Player[];
+    players: any[];
 
     // 轮次控制
     activePlayerId: number | null; // 当前轮到谁行动
@@ -70,36 +84,41 @@ interface GameState {
     updateGameState: (payload: Partial<GameState>) => void; // 接收后端 WebSocket 推送的大更新
     playerAction: (playerId: number, action: PlayerAction, amount?: number) => void;
     resetRound: () => void;
-    sitDown: (playerId: number, seatIndex: number, buyInAmount: number) => void;
+    sitDown: (roomId: string, seatIndex: number, amount: number) => Promise<boolean>;
     standUp: () => void;
     nextPhase: () => void;
     updateProfile: (name: string, avatar: string) => void;
     logout: () => void;
+    fetchProfile: () => Promise<void>;
 
 }
 
 // --- Zustand Store 实现 ---
 
 export const useGameStore = create<GameState>((set, get) => ({
+    token: typeof window !== 'undefined' ? localStorage.getItem('poker_token') : null,
+    currentUser: null,
+    isAuthenticated: false,
     updateProfile: (name, avatar) => {
-        const { players, myPlayerId } = get();
+        const {players, myPlayerId} = get();
         // 更新 players 数组里那个代表"我"的人
         const updatedPlayers = players.map(p =>
-            p.id === myPlayerId ? { ...p, name, avatar } : p
+            p.id === myPlayerId ? {...p, name, avatar} : p
         );
-        set({ players: updatedPlayers });
+        set({players: updatedPlayers});
     },
 
-    logout: () => {
-        set({
-            myPlayerId: null,
-            roomId: null,
-            players: [], // 清空当前缓存的玩家
-            // 注意：不要清空 settings，那些应该 persist
-        });
+    logout: async () => {
+        try {
+            await api.post('/logout'); // 告诉后端销毁 Token
+        } catch (e) {
+            // 忽略错误，强制前端登出
+        }
+        localStorage.removeItem('poker_token');
+        set({token: null, currentUser: null, isAuthenticated: false});
     },
     nextPhase: () => {
-        const { stage, communityCards, players, myPlayerId } = get();
+        const {stage, communityCards, players, myPlayerId} = get();
 
         // 简单的状态机
         switch (stage) {
@@ -137,7 +156,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     // 给机器人随机两张牌用于展示
                     return {
                         ...p,
-                        cards: [{ suite: '♦', rank: '2', code: '2d' }, { suite: '♣', rank: '7', code: '7c' }]
+                        cards: [{suite: '♦', rank: '2', code: '2d'}, {suite: '♣', rank: '7', code: '7c'}]
                     };
                 });
                 set({
@@ -156,7 +175,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     // 模拟发牌给 Hero
                     players: get().players.map(p => {
                         if (p.id === myPlayerId) {
-                            return { ...p, cards: [MOCK_DECK[0], MOCK_DECK[1]] };
+                            return {...p, cards: [MOCK_DECK[0], MOCK_DECK[1]]};
                         }
                         return p;
                     })
@@ -166,19 +185,30 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
     login: async (username, password, avatar) => {
         // 模拟网络请求
-        console.log(`Logging in with: ${username} / ${password}`);
+        try {
+            const {data} = await api.post('/login', {username, password});
 
-        // 模拟生成 ID
-        const myId = Math.floor(Math.random() * 10000) + 1000;
+            // 登录成功
+            const token = data.token;
+            const user = data.user;
 
-        set({
-            myPlayerId: myId,
-            players: [
-                {
-                    id: myId,
-                    name: username, // 使用用户名作为显示名
-                    avatar: avatar,
-                    chips: 10000,
+            // 保存 Token
+            localStorage.setItem('poker_token', token);
+            console.log(`Logging in with: ${username} / ${password}`);
+
+            // 模拟生成 ID
+            const myId = Math.floor(Math.random() * 10000) + 1000;
+            set({
+                token,
+                currentUser: user,
+                isAuthenticated: true,
+                // 同时把"我"加入到 players 列表 (兼容之前的逻辑)
+                myPlayerId: user.id,
+                players: [{
+                    id: user.id,
+                    name: user.name,
+                    chips: Number(user.chips), // 转数字
+                    avatar: user.avatar || "/avatars/1.png",
                     position: 0,
                     status: 'active',
                     cards: null,
@@ -186,10 +216,15 @@ export const useGameStore = create<GameState>((set, get) => ({
                     lastAction: null,
                     isDealer: false,
                     timeLeft: 0
-                }
-            ]
-        });
-        return true;
+                }]
+            });
+
+            return true;
+        } catch (error: any) {
+            console.error("Login failed", error);
+            toast.error(error.response?.data?.message || "Login failed");
+            return false;
+        }
     },
     // 初始状态
     roomId: null,
@@ -205,7 +240,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Actions
 
-    setRoomInfo: (roomId, myId) => set({ roomId, myPlayerId: myId }),
+    setRoomInfo: (roomId, myId) => set({roomId, myPlayerId: myId}),
 
     // 这是最常用的方法：直接把后端通过 Socket 推送过来的数据并入 Store
     updateGameState: (payload) => {
@@ -232,7 +267,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 如果是加注，更新当前的 currentBet
             const newCurrentBet = amount > state.currentBet ? amount : state.currentBet;
 
-            return { players: newPlayers, currentBet: newCurrentBet };
+            return {players: newPlayers, currentBet: newCurrentBet};
         });
     },
 
@@ -250,35 +285,43 @@ export const useGameStore = create<GameState>((set, get) => ({
             status: p.chips > 0 ? 'active' : 'sitting_out'
         }))
     }),
-    sitDown: (playerId, seatIndex, buyInAmount) => {
-        const { players } = get();
+    fetchProfile: async () => {
+        try {
+            const {data} = await api.get('/me');
+            set({
+                currentUser: data,
+                myPlayerId: data.id
+            });
+        } catch (error) {
+            console.error("Failed to fetch profile");
+            // 如果获取失败，可能是 token 过期，执行登出
+            get().logout();
+        }
+    },
+    sitDown: async (roomId, seatIndex, amount) => {
+        try {
+            // 调用刚才写的 Laravel API
+            await api.post(`/rooms/${roomId}/sit`, { seatIndex, amount });
 
-        // 检查该座位是否有人
-        if (players.find(p => p.position === seatIndex)) return;
+            // 成功后，刷新一下房间状态 (包含座位信息)
+            // 实际项目中这里应该等待 WebSocket 推送，但现在先手动刷一下
+            const { data } = await api.get(`/rooms/${roomId}/state`);
 
-        // 构造新玩家对象
-        const newPlayer: any = { // 这里为了省事用了any，实际请用 Player 类型
-            id: playerId,
-            name: "Hero", // 应该从 UserProfile 取
-            avatar: "/avatars/1.png",
-            chips: buyInAmount, // 带入的钱
-            position: seatIndex,
-            status: 'active',
-            cards: null,
-            bet: 0,
-            lastAction: null,
-            isDealer: false,
-            timeLeft: 30
-        };
+            // 更新本地数据
+            set({
+                players: data.players, // 后端返回的格式化好的 players
+                myPlayerId: get().currentUser?.id
+            });
 
-        set({
-            players: [...players, newPlayer],
-            myPlayerId: playerId // 标记我自己坐下了
-        });
+            return true;
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || "Failed to sit down");
+            return false;
+        }
     },
 
     standUp: () => {
-        const { players, myPlayerId } = get();
+        const {players, myPlayerId} = get();
         set({
             players: players.filter(p => p.id !== myPlayerId),
             myPlayerId: null // 变成旁观者
