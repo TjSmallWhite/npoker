@@ -1,165 +1,142 @@
 "use client"
 
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
-import {motion} from "framer-motion";
+import {useGameStore} from '@/store/useGameStore';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
-import {Card as UICard, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
-import {Avatar, AvatarFallback} from '@/components/ui/avatar';
-import Card from '@/components/game/Card';
-import {useGameStore} from '@/store/useGameStore';
+import {Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter} from '@/components/ui/card';
+import {Label} from '@/components/ui/label';
 import {toast} from "sonner";
-import {Lock, User} from 'lucide-react'; // 记得安装 lucide-react 图标
+import {Loader2, Spade, Club, Heart, Diamond} from 'lucide-react';
 
-export default function LoginPage() {
+export default function AuthPage() {
     const router = useRouter();
-    const {login} = useGameStore();
+    const {login, register} = useGameStore();
 
-    // 表单状态
-    const [username, setUsername] = useState("");
-    const [password, setPassword] = useState("");
+    // 模式切换: 'login' | 'register'
+    const [mode, setMode] = useState<'login' | 'register'>('login');
+
+    const [name, setName] = useState(''); // 注册才用
+    const [email, setEmail] = useState(''); // 也就是 username
+    const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // 预设头像
-    const avatars = ["/avatars/1.png", "/avatars/2.png", "/avatars/3.png", "/avatars/4.png"];
-    const [selectedAvatar, setSelectedAvatar] = useState(avatars[0]);
 
-    const handleLogin = async (e: React.FormEvent) => {
+    useEffect(() => {
+        const token = localStorage.getItem('poker_token');
+        if (token) {
+            // 如果本地有 Token，直接跳去大厅，不让他看登录框
+            router.replace('/game');
+        }
+    }, [router]);
+
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        if (!username.trim() || !password.trim()) {
-            toast.error("Please enter both username and password");
+        if (!email || !password || (mode === 'register' && !name)) {
+            toast.error("Please fill in all fields");
             return;
         }
 
         setLoading(true);
+        let success = false;
 
-        // 调用真实的 login
-        const success = await login(username, password);
+        if (mode === 'login') {
+            success = await login(email, password);
+        } else {
+            success = await register(name, email, password);
+        }
 
         setLoading(false);
 
         if (success) {
-            toast.success(`Welcome back!`);
-            router.push('/game'); // 跳转大厅
+            toast.success(mode === 'login' ? "Welcome back!" : "Account created!");
+            router.push('/game');
         }
     };
 
     return (
-        // 使用 globals.css 定义的 bg-table-bg (深绿色背景)
-        <div className="w-full h-screen bg-table-bg flex flex-col items-center justify-center relative overflow-hidden">
+        <div className="min-h-screen w-full bg-[#0a0a0a] flex items-center justify-center relative overflow-hidden">
+            {/* 背景装饰 (保持不变) ... */}
 
-            {/* --- 背景装饰 (保持不变) --- */}
-            <div className="absolute inset-0 pointer-events-none">
-                <motion.div
-                    initial={{x: -200, y: -200, rotate: -45}}
-                    animate={{x: 50, y: 50, rotate: -15}}
-                    transition={{duration: 1, type: "spring"}}
-                    className="absolute top-10 left-10 opacity-50"
-                >
-                    <Card rank="A" suite="♠" size="lg"/>
-                </motion.div>
+            <div className="relative z-10 w-full max-w-md px-4">
+                <div className="text-center mb-8">
+                    <h1 className="text-4xl md:text-6xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-700 drop-shadow-sm">
+                        TEXAS HOLD'EM
+                    </h1>
+                    <p className="text-slate-400 mt-2 font-mono text-sm tracking-widest uppercase">High Stakes • Real
+                        Time</p>
+                </div>
 
-                <motion.div
-                    initial={{x: 200, y: 200, rotate: 45}}
-                    animate={{x: -50, y: -100, rotate: 15}}
-                    transition={{duration: 1.2, delay: 0.2, type: "spring"}}
-                    className="absolute bottom-10 right-10 opacity-50"
-                >
-                    <Card rank="K" suite="♥" size="lg"/>
-                </motion.div>
-            </div>
-
-            {/* --- 登录卡片 --- */}
-            <motion.div
-                initial={{scale: 0.9, opacity: 0}}
-                animate={{scale: 1, opacity: 1}}
-                transition={{duration: 0.5}}
-                className="z-10 w-full max-w-md px-4"
-            >
-                <UICard className="bg-slate-950/80 border-slate-800 text-white backdrop-blur-md shadow-2xl">
-                    <CardHeader className="text-center pb-2">
-                        {/* 使用 globals.css 定义的 gold-main */}
-                        <CardTitle
-                            className="text-4xl font-bold text-gold-main drop-shadow-md font-serif tracking-wide">
-                            TEXAS HOLD'EM
+                <Card className="bg-black/60 border-yellow-900/30 backdrop-blur-xl shadow-2xl">
+                    <CardHeader>
+                        <CardTitle className="text-xl text-yellow-500 text-center">
+                            {mode === 'login' ? 'Player Login' : 'New Player Registration'}
                         </CardTitle>
-                        <CardDescription className="text-slate-400">
-                            Sign in to start your journey
-                        </CardDescription>
                     </CardHeader>
-
                     <CardContent>
-                        <form onSubmit={handleLogin} className="space-y-6">
+                        <form onSubmit={handleSubmit} className="space-y-4">
 
-                            {/* Avatar Selection */}
-                            <div className="flex flex-col items-center gap-3 mb-6">
-                                <span className="text-xs text-slate-500 uppercase tracking-widest">Select Avatar</span>
-                                <div className="flex justify-center gap-4">
-                                    {avatars.map((av, i) => (
-                                        <motion.div
-                                            key={i}
-                                            whileHover={{scale: 1.1}}
-                                            whileTap={{scale: 0.95}}
-                                            onClick={() => setSelectedAvatar(av)}
-                                            className={`cursor-pointer rounded-full p-1 border-2 transition-colors ${selectedAvatar === av ? 'border-gold-main shadow-[0_0_10px_var(--color-gold-main)]' : 'border-transparent hover:border-slate-600'}`}
-                                        >
-                                            <Avatar className="w-12 h-12 bg-slate-800">
-                                                <AvatarFallback
-                                                    className="bg-slate-800 text-slate-400 text-xs">P{i + 1}</AvatarFallback>
-                                            </Avatar>
-                                        </motion.div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Inputs */}
-                            <div className="space-y-4">
-                                <div className="relative">
-                                    <User className="absolute left-3 top-3 h-4 w-4 text-slate-500"/>
+                            {/* 仅注册模式显示 Name */}
+                            {mode === 'register' && (
+                                <div className="space-y-2">
+                                    <Label className="text-slate-300">Nickname</Label>
                                     <Input
-                                        type="text"
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                        placeholder="Username"
-                                        className="pl-10 bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-600 focus-visible:ring-gold-main focus-visible:border-gold-main"
+                                        placeholder="Your table name"
+                                        className="bg-slate-900/50 border-slate-700 text-white focus:border-yellow-600"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
                                     />
                                 </div>
+                            )}
 
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-500"/>
-                                    <Input
-                                        type="password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        placeholder="Password"
-                                        className="pl-10 bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-600 focus-visible:ring-gold-main focus-visible:border-gold-main"
-                                    />
-                                </div>
+                            <div className="space-y-2">
+                                <Label className="text-slate-300">Email / Username</Label>
+                                <Input
+                                    type="email"
+                                    placeholder="pokerface@example.com"
+                                    className="bg-slate-900/50 border-slate-700 text-white focus:border-yellow-600"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                />
                             </div>
 
-                            {/* Login Button */}
-                            <Button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full bg-gold-main hover:bg-gold-light text-black font-bold py-6 text-lg shadow-lg transition-all active:scale-95"
-                            >
-                                {loading ? "Verifying..." : "LOGIN"}
+                            <div className="space-y-2">
+                                <Label className="text-slate-300">Password</Label>
+                                <Input
+                                    type="password"
+                                    className="bg-slate-900/50 border-slate-700 text-white focus:border-yellow-600"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                            </div>
+
+                            <Button type="submit"
+                                    className="w-full bg-yellow-600 hover:bg-yellow-500 text-black font-bold mt-4"
+                                    disabled={loading}>
+                                {loading ? <Loader2
+                                    className="animate-spin"/> : (mode === 'login' ? 'Enter Lobby' : 'Create Account')}
                             </Button>
-
-                            <div className="text-center text-xs text-slate-500 mt-4">
-                                No account? <span
-                                className="text-gold-main cursor-pointer hover:underline">Create one</span>
-                            </div>
-
                         </form>
                     </CardContent>
-                </UICard>
-            </motion.div>
 
-            <div className="absolute bottom-4 text-slate-600 text-xs">
-                &copy; 2024 Poker Master. All rights reserved.
+                    <CardFooter className="justify-center border-t border-white/5 pt-4">
+                        <div className="text-xs text-slate-400">
+                            {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                            <button
+                                onClick={() => {
+                                    setMode(mode === 'login' ? 'register' : 'login');
+                                    // 清空密码防止混淆
+                                    setPassword('');
+                                }}
+                                className="text-yellow-500 hover:underline font-bold ml-1"
+                            >
+                                {mode === 'login' ? "Sign Up" : "Log In"}
+                            </button>
+                        </div>
+                    </CardFooter>
+                </Card>
             </div>
         </div>
     );

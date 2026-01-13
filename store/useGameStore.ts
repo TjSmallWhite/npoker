@@ -100,6 +100,7 @@ interface GameState {
     logout: () => void;
     fetchProfile: () => Promise<void>;
     setMyCards: (cards: string[]) => void;
+    register: (name: string, email: string, password: string) => Promise<boolean>;
 }
 
 // --- Zustand Store 实现 ---
@@ -128,6 +129,42 @@ const parseCardsForFrontend = (cardCodes: string[]): Card[] => {
 
 
 export const useGameStore = create<GameState>((set, get) => ({
+    register: async (name, email, password) => {
+        try {
+            const { data } = await api.post('/register', { name, email, password });
+
+            // 注册成功后逻辑和登录一样：存 Token，存 User
+            const token = data.token;
+            const user = data.user;
+
+            localStorage.setItem('poker_token', token);
+            set({
+                token,
+                currentUser: user,
+                isAuthenticated: true,
+                myPlayerId: user.id,
+                // ... 初始化 players 数组 (同 login) ...
+                players: [{
+                    id: user.id,
+                    name: user.name,
+                    chips: Number(user.chips),
+                    avatar: user.avatar || "/avatars/1.png",
+                    position: 0,
+                    status: 'active',
+                    cards: null,
+                    bet: 0,
+                    lastAction: null,
+                    isDealer: false,
+                    timeLeft: 0
+                }]
+            });
+            return true;
+        } catch (error: any) {
+            console.error("Registration failed", error);
+            toast.error(error.response?.data?.message || "Registration failed");
+            return false;
+        }
+    },
     roomConfig: null,
     setRoomConfig: (config) => set({ roomConfig: config }),
     token: typeof window !== 'undefined' ? localStorage.getItem('poker_token') : null,
