@@ -22,7 +22,7 @@ import {useGameStore} from "@/store/useGameStore";
 
 export default function GameLobby() {
     const router = useRouter();
-    const { currentUser, fetchProfile } = useGameStore();
+    const {currentUser, fetchProfile} = useGameStore();
 
     // Data State
     const [loading, setLoading] = useState(true);
@@ -61,7 +61,7 @@ export default function GameLobby() {
             return;
         }
         toast.success(`Joining Room #${roomId}...`);
-        setTimeout(() => router.push('/game/room'), 500);
+        setTimeout(() => router.push(`/game/room/${roomId}`), 500);
     };
 
     return (
@@ -76,7 +76,7 @@ export default function GameLobby() {
                     <div className="relative">
                         <Avatar
                             className="h-10 w-10 border-2 border-gold-main cursor-pointer hover:scale-105 transition-transform">
-                            <AvatarImage src={user?.avatar}/>
+                            {/*<AvatarImage src={user?.avatar}/>*/}
                             <AvatarFallback className="bg-slate-800 animate-pulse">...</AvatarFallback>
                         </Avatar>
                         {/* VIP Badge */}
@@ -107,14 +107,14 @@ export default function GameLobby() {
                 </div>
 
                 {/* Right Actions */}
-                <div className="flex gap-3 text-slate-400">
-                    <Search className="w-6 h-6 cursor-pointer hover:text-white"/>
-                    <div className="relative cursor-pointer hover:text-white">
-                        <Bell className="w-6 h-6"/>
-                        <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-black"/>
-                    </div>
-                    <Settings className="w-6 h-6 cursor-pointer hover:text-white"/>
-                </div>
+                {/*<div className="flex gap-3 text-slate-400">*/}
+                {/*    <Search className="w-6 h-6 cursor-pointer hover:text-white"/>*/}
+                {/*    <div className="relative cursor-pointer hover:text-white">*/}
+                {/*        <Bell className="w-6 h-6"/>*/}
+                {/*        <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-black"/>*/}
+                {/*    </div>*/}
+                {/*    <Settings className="w-6 h-6 cursor-pointer hover:text-white"/>*/}
+                {/*</div>*/}
             </header>
 
             <main className="container mx-auto max-w-4xl px-4 py-4 space-y-6">

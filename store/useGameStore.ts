@@ -67,6 +67,15 @@ interface GameState {
     pot: number;          // 总底池
     currentBet: number;   // 当前这一轮最大的下注额 (别人要跟注的金额)
 
+    roomConfig: {
+        name: string;
+        smallBlind: number;
+        bigBlind: number;
+        minBuyIn: number;
+        maxBuyIn: number;
+    } | null;
+
+    setRoomConfig: (config: any) => void;
     // 核心数据
     communityCards: Card[];
     players: any[];
@@ -90,15 +99,48 @@ interface GameState {
     updateProfile: (name: string, avatar: string) => void;
     logout: () => void;
     fetchProfile: () => Promise<void>;
-
+    setMyCards: (cards: string[]) => void;
 }
 
 // --- Zustand Store 实现 ---
+const parseCardsForFrontend = (cardCodes: string[]): Card[] => {
+    if (!cardCodes || !Array.isArray(cardCodes)) return [];
+
+    const suiteMap: Record<string, Suite> = {'s': '♠', 'h': '♥', 'c': '♣', 'd': '♦'};
+
+    return cardCodes.map(code => {
+        // code 可能是 "As" 或 "10d" (后端如果是 Td 需要转 10)
+        // 取最后一位作为花色
+        const suiteChar = code.slice(-1).toLowerCase();
+        // 取前面所有位作为点数
+        let rankStr = code.slice(0, -1);
+
+        // 处理特殊的 'T' -> '10' (如果后端发的是 Td, Ts 等)
+        if (rankStr === 'T') rankStr = '10';
+
+        return {
+            code: code,
+            rank: rankStr as Rank,
+            suite: suiteMap[suiteChar] || '♠' // 默认给黑桃防止报错
+        };
+    });
+};
+
 
 export const useGameStore = create<GameState>((set, get) => ({
+    roomConfig: null,
+    setRoomConfig: (config) => set({ roomConfig: config }),
     token: typeof window !== 'undefined' ? localStorage.getItem('poker_token') : null,
     currentUser: null,
     isAuthenticated: false,
+    setMyCards: (cards: string[]) => {
+        const {players, myPlayerId} = get();
+        // 把牌塞给"我"
+        const updatedPlayers = players.map(p =>
+            p.id === myPlayerId ? {...p, cards: parseCardsForFrontend(cards)} : p
+        );
+        set({players: updatedPlayers});
+    },
     updateProfile: (name, avatar) => {
         const {players, myPlayerId} = get();
         // 更新 players 数组里那个代表"我"的人
@@ -301,11 +343,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     sitDown: async (roomId, seatIndex, amount) => {
         try {
             // 调用刚才写的 Laravel API
-            await api.post(`/rooms/${roomId}/sit`, { seatIndex, amount });
+            await api.post(`/rooms/${roomId}/sit`, {seatIndex, amount});
 
             // 成功后，刷新一下房间状态 (包含座位信息)
             // 实际项目中这里应该等待 WebSocket 推送，但现在先手动刷一下
-            const { data } = await api.get(`/rooms/${roomId}/state`);
+            const {data} = await api.get(`/rooms/${roomId}/state`);
 
             // 更新本地数据
             set({
