@@ -1,50 +1,51 @@
 "use client"
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { toast } from "sonner";
-import { ArrowLeft, Plus, PlayCircle, Menu } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, {useEffect, useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {toast} from "sonner";
+import {ArrowLeft, Plus, PlayCircle, Menu} from 'lucide-react';
+import {motion, AnimatePresence} from 'framer-motion';
 
 import LandscapeGuard from '@/components/game/LandscapeGuard';
 import AnimatedCard from '@/components/game/AnimatedCard';
 import Card from '@/components/game/Card';
 import BuyInModal from '@/components/game/BuyInModal';
 
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
-import { useGameStore } from "@/store/useGameStore";
-import { cn } from "@/lib/utils";
+import {Button} from '@/components/ui/button';
+import {Avatar, AvatarFallback} from '@/components/ui/avatar';
+import {Badge} from '@/components/ui/badge';
+import {Slider} from '@/components/ui/slider';
+import {useGameStore} from "@/store/useGameStore";
+import {cn} from "@/lib/utils";
 import api from '@/lib/api';
+import {echo} from "@/lib/echo";
 
 // --- 响应式座位坐标 (Responsive Seat Positions) ---
 // 手机端(Default) 使用百分比紧贴边缘; 桌面端(md) 使用舒适的间距
 const SEAT_POSITIONS = [
     // 0: Hero (Bottom Center) - 稍微往上提一点，留给操作栏
-    { id: 0, className: "bottom-[18%] left-1/2 -translate-x-1/2 md:bottom-8" },
+    {id: 0, className: "bottom-[18%] left-1/2 -translate-x-1/2 md:bottom-8"},
 
     // 1: 左下 (Bottom Left)
-    { id: 1, className: "bottom-[20%] left-[2%] md:bottom-16 md:left-[15%]" },
+    {id: 1, className: "bottom-[20%] left-[2%] md:bottom-16 md:left-[15%]"},
 
     // 2: 左 (Left Center)
-    { id: 2, className: "top-1/2 -translate-y-[60%] left-[1%] md:left-4" },
+    {id: 2, className: "top-1/2 -translate-y-[60%] left-[1%] md:left-4"},
 
     // 3: 左上 (Top Left)
-    { id: 3, className: "top-[12%] left-[2%] md:top-16 md:left-[15%]" },
+    {id: 3, className: "top-[12%] left-[2%] md:top-16 md:left-[15%]"},
 
     // 4: 正上 (Top Center)
-    { id: 4, className: "top-[2%] left-1/2 -translate-x-1/2 md:top-4" },
+    {id: 4, className: "top-[2%] left-1/2 -translate-x-1/2 md:top-4"},
 
     // 5: 右上 (Top Right)
-    { id: 5, className: "top-[12%] right-[2%] md:top-16 md:right-[15%]" },
+    {id: 5, className: "top-[12%] right-[2%] md:top-16 md:right-[15%]"},
 
     // 6: 右 (Right Center)
-    { id: 6, className: "top-1/2 -translate-y-[60%] right-[1%] md:right-4" },
+    {id: 6, className: "top-1/2 -translate-y-[60%] right-[1%] md:right-4"},
 
     // 7: 右下 (Bottom Right)
-    { id: 7, className: "bottom-[20%] right-[2%] md:bottom-16 md:right-[15%]" },
+    {id: 7, className: "bottom-[20%] right-[2%] md:bottom-16 md:right-[15%]"},
 ];
 
 export default function PokerRoom() {
@@ -67,6 +68,28 @@ export default function PokerRoom() {
             // updateGameState(...)
         };
         initRoom();
+
+
+        if (echo) {
+            console.log("Listening to channel: room.1");
+
+            echo.channel('room.1') // 假设房间号是 1
+                .listen('.game.updated', (e: any) => {
+                    console.log("WebSocket Event Received:", e);
+
+                    // 根据事件类型更新 Store
+                    if (e.type === 'PLAYER_SIT') {
+                        toast.info("Someone joined the table!");
+                        // 更新 Store 里的 players 列表
+                        useGameStore.getState().updateGameState({
+                            players: e.payload.players
+                        });
+                    }
+                });
+        }
+        return () => {
+            if (echo) echo.leave('room.1');
+        };
     }, []);
 
     const isMyTurn = activePlayerId === myPlayerId && myPlayerId !== null;
@@ -82,7 +105,10 @@ export default function PokerRoom() {
     };
 
     const handleSeatClick = (seatIndex: number) => {
-        if (myPlayerId) { toast.error("Already seated!"); return; }
+        if (myPlayerId) {
+            toast.error("Already seated!");
+            return;
+        }
         setSelectedSeat(seatIndex);
         setShowBuyIn(true);
     };
@@ -100,40 +126,45 @@ export default function PokerRoom() {
         }
     };
 
-    const handleAction = (type: 'FOLD'|'CHECK'|'RAISE') => {
-        if(!myPlayerId) return;
+    const handleAction = (type: 'FOLD' | 'CHECK' | 'RAISE') => {
+        if (!myPlayerId) return;
         // 这里后续也要改成 api.post('/rooms/1/act')
-        if(type === 'RAISE') playerAction(myPlayerId, type, raiseAmount[0]);
+        if (type === 'RAISE') playerAction(myPlayerId, type, raiseAmount[0]);
         else playerAction(myPlayerId, type);
     };
 
     return (
         <div className="w-full h-screen bg-table-bg relative overflow-hidden flex flex-col select-none">
-            <LandscapeGuard />
+            <LandscapeGuard/>
 
             <BuyInModal
                 isOpen={showBuyIn} onClose={() => setShowBuyIn(false)}
-                onConfirm={handleBuyInConfirm} minBuyIn={100} maxBuyIn={5000} userBalance={Number(currentUser?.chips || 0)}
+                onConfirm={handleBuyInConfirm} minBuyIn={100} maxBuyIn={5000}
+                userBalance={Number(currentUser?.chips || 0)}
             />
 
             {/* --- Top Bar (Compact) --- */}
-            <div className="absolute top-0 left-0 w-full p-2 md:p-4 flex justify-between items-start z-20 pointer-events-none">
+            <div
+                className="absolute top-0 left-0 w-full p-2 md:p-4 flex justify-between items-start z-20 pointer-events-none">
                 <div className="pointer-events-auto flex gap-2 items-center">
-                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white h-8 w-8" onClick={() => router.back()}>
-                        <ArrowLeft className="w-5 h-5" />
+                    <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white h-8 w-8"
+                            onClick={() => router.back()}>
+                        <ArrowLeft className="w-5 h-5"/>
                     </Button>
-                    <Badge variant="outline" className="bg-black/60 text-white border-white/10 h-7 px-2 text-[10px] md:text-xs backdrop-blur-md">
+                    <Badge variant="outline"
+                           className="bg-black/60 text-white border-white/10 h-7 px-2 text-[10px] md:text-xs backdrop-blur-md">
                         Room #1 • $5/$10
                     </Badge>
                 </div>
 
                 <div className="pointer-events-auto flex gap-2">
                     {/* Dev Button */}
-                    <Button onClick={() => nextPhase()} size="sm" className="h-7 bg-blue-600/80 hover:bg-blue-500 text-[10px] px-2">
-                        <PlayCircle className="w-3 h-3 mr-1" /> Dev
+                    <Button onClick={() => nextPhase()} size="sm"
+                            className="h-7 bg-blue-600/80 hover:bg-blue-500 text-[10px] px-2">
+                        <PlayCircle className="w-3 h-3 mr-1"/> Dev
                     </Button>
                     <Button variant="ghost" size="icon" className="text-white h-8 w-8">
-                        <Menu className="w-5 h-5" />
+                        <Menu className="w-5 h-5"/>
                     </Button>
                 </div>
             </div>
@@ -144,19 +175,23 @@ export default function PokerRoom() {
                    手机端: w-[95%] h-[60%] border-[8px] (更扁平，留出上下空间)
                    PC端: w-[80%] h-[65%] border-[16px]
                 */}
-                <div className="w-[92%] h-[55%] md:w-[80%] md:h-[65%] bg-table-felt border-[8px] md:border-[16px] border-table-felt-dark rounded-[60px] md:rounded-[150px] shadow-2xl relative flex items-center justify-center">
+                <div
+                    className="w-[92%] h-[55%] md:w-[80%] md:h-[65%] bg-table-felt border-[8px] md:border-[16px] border-table-felt-dark rounded-[60px] md:rounded-[150px] shadow-2xl relative flex items-center justify-center">
 
                     {/* Logo */}
-                    <div className="absolute top-[25%] font-serif text-table-felt-dark/40 text-2xl md:text-4xl font-bold pointer-events-none">
+                    <div
+                        className="absolute top-[25%] font-serif text-table-felt-dark/40 text-2xl md:text-4xl font-bold pointer-events-none">
                         POKER
                     </div>
 
                     {/* --- 公共牌 (Community Cards) --- */}
                     {/* 手机端: scale-75 (缩小显示) */}
-                    <div className="absolute top-[50%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1 md:gap-3 z-10 h-16 items-center">
+                    <div
+                        className="absolute top-[50%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1 md:gap-3 z-10 h-16 items-center">
                         <AnimatePresence mode='popLayout'>
                             {communityCards.map((card, i) => (
-                                <div key={`${card.code}-${i}`} className="transform scale-75 md:scale-100 origin-center">
+                                <div key={`${card.code}-${i}`}
+                                     className="transform scale-75 md:scale-100 origin-center">
                                     <AnimatedCard
                                         index={i}
                                         rank={card.rank as any}
@@ -170,65 +205,77 @@ export default function PokerRoom() {
                     </div>
 
                     {/* Pot - 稍微下移一点 */}
-                    <div className="absolute top-[68%] bg-black/40 px-3 py-0.5 md:px-6 md:py-1.5 rounded-full text-gold-main text-xs md:text-sm font-mono border border-white/5 backdrop-blur-sm">
+                    <div
+                        className="absolute top-[68%] bg-black/40 px-3 py-0.5 md:px-6 md:py-1.5 rounded-full text-gold-main text-xs md:text-sm font-mono border border-white/5 backdrop-blur-sm">
                         Pot: ${pot.toLocaleString()}
                     </div>
 
                     {/* --- 渲染座位 --- */}
-                    {Array.from({ length: 8 }).map((_, i) => {
+                    {Array.from({length: 8}).map((_, i) => {
                         const player = players.find(p => p.position === i);
                         const visualIndex = getVisualPosition(i);
-                        const posStyle = SEAT_POSITIONS[visualIndex] || { className: 'hidden' };
+                        const posStyle = SEAT_POSITIONS[visualIndex] || {className: 'hidden'};
                         const isWinner = winnerIds?.includes(player?.id || -1);
 
                         return (
-                            <div key={i} className={cn("absolute flex flex-col items-center gap-1 transition-all duration-500", posStyle.className)}>
+                            <div key={i}
+                                 className={cn("absolute flex flex-col items-center gap-1 transition-all duration-500", posStyle.className)}>
                                 {player ? (
                                     <>
                                         <div className="relative z-10">
                                             {/* Avatar: 手机端 w-10 (40px) */}
-                                            <Avatar className={cn("w-10 h-10 md:w-16 md:h-16 border-2 shadow-lg bg-slate-900",
-                                                player.id === activePlayerId ? "border-gold-main ring-2 md:ring-4 ring-gold-main/30 scale-110" : "border-slate-300",
-                                                isWinner ? "border-gold-main ring-4 ring-gold-main scale-110" : ""
-                                            )}>
-                                                <AvatarFallback className="bg-slate-800 text-white text-[10px] md:text-base">{player.name[0]}</AvatarFallback>
+                                            <Avatar
+                                                className={cn("w-10 h-10 md:w-16 md:h-16 border-2 shadow-lg bg-slate-900",
+                                                    player.id === activePlayerId ? "border-gold-main ring-2 md:ring-4 ring-gold-main/30 scale-110" : "border-slate-300",
+                                                    isWinner ? "border-gold-main ring-4 ring-gold-main scale-110" : ""
+                                                )}>
+                                                <AvatarFallback
+                                                    className="bg-slate-800 text-white text-[10px] md:text-base">{player.name[0]}</AvatarFallback>
                                             </Avatar>
 
                                             {/* 倒计时圈 (只在 PC 显示或手机端简化) */}
                                             {player.id === activePlayerId && (
-                                                <div className="absolute -inset-1 border-2 border-gold-main rounded-full animate-pulse md:hidden" />
+                                                <div
+                                                    className="absolute -inset-1 border-2 border-gold-main rounded-full animate-pulse md:hidden"/>
                                             )}
 
                                             {player.isDealer && (
-                                                <div className="absolute -bottom-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-white text-black text-[8px] md:text-[10px] font-bold rounded-full flex items-center justify-center border border-slate-400 z-20">D</div>
+                                                <div
+                                                    className="absolute -bottom-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-white text-black text-[8px] md:text-[10px] font-bold rounded-full flex items-center justify-center border border-slate-400 z-20">D</div>
                                             )}
                                         </div>
 
                                         {/* Info Box: 手机端极简模式 */}
-                                        <div className="bg-black/80 text-white text-[9px] md:text-xs px-2 py-0.5 md:py-1 rounded-md text-center min-w-[50px] md:min-w-[80px] border border-white/10 shadow-lg z-20 -mt-1">
-                                            <div className="truncate max-w-[50px] md:max-w-[80px] text-slate-300 leading-tight">{player.name}</div>
-                                            <div className="text-gold-main font-mono font-bold leading-tight">${player.chips > 1000 ? (player.chips/1000).toFixed(1)+'k' : player.chips}</div>
+                                        <div
+                                            className="bg-black/80 text-white text-[9px] md:text-xs px-2 py-0.5 md:py-1 rounded-md text-center min-w-[50px] md:min-w-[80px] border border-white/10 shadow-lg z-20 -mt-1">
+                                            <div
+                                                className="truncate max-w-[50px] md:max-w-[80px] text-slate-300 leading-tight">{player.name}</div>
+                                            <div
+                                                className="text-gold-main font-mono font-bold leading-tight">${player.chips > 1000 ? (player.chips / 1000).toFixed(1) + 'k' : player.chips}</div>
                                         </div>
 
                                         {/* 别人手牌: 手机端缩小 */}
                                         {player.id !== myPlayerId && player.status === 'active' && (
-                                            <div className="absolute top-2 left-6 md:left-10 flex -space-x-4 md:-space-x-8 scale-50 md:scale-75 rotate-12 opacity-90 z-0">
-                                                <Card hidden size="sm" />
-                                                <Card hidden size="sm" />
+                                            <div
+                                                className="absolute top-2 left-6 md:left-10 flex -space-x-4 md:-space-x-8 scale-50 md:scale-75 rotate-12 opacity-90 z-0">
+                                                <Card hidden size="sm"/>
+                                                <Card hidden size="sm"/>
                                             </div>
                                         )}
 
                                         {/* Action Badge */}
                                         {player.lastAction && (
-                                            <Badge className="absolute -top-4 z-30 bg-white/90 text-black text-[9px] h-4 px-1 md:text-xs shadow-md animate-in zoom-in">
+                                            <Badge
+                                                className="absolute -top-4 z-30 bg-white/90 text-black text-[9px] h-4 px-1 md:text-xs shadow-md animate-in zoom-in">
                                                 {player.lastAction}
                                             </Badge>
                                         )}
                                     </>
                                 ) : (
                                     !myPlayerId && (
-                                        <button onClick={() => handleSeatClick(i)} className="w-9 h-9 md:w-12 md:h-12 rounded-full border border-dashed border-white/30 flex items-center justify-center text-white/30 hover:text-gold-main hover:border-gold-main hover:bg-gold-main/10 transition-all">
-                                            <Plus className="w-4 h-4 md:w-6 md:h-6" />
+                                        <button onClick={() => handleSeatClick(i)}
+                                                className="w-9 h-9 md:w-12 md:h-12 rounded-full border border-dashed border-white/30 flex items-center justify-center text-white/30 hover:text-gold-main hover:border-gold-main hover:bg-gold-main/10 transition-all">
+                                            <Plus className="w-4 h-4 md:w-6 md:h-6"/>
                                         </button>
                                     )
                                 )}
@@ -240,24 +287,31 @@ export default function PokerRoom() {
 
             {/* --- 底部 Hero 操作栏 (Mobile Optimized) --- */}
             {/* 高度压缩至 80px-100px */}
-            <div className="w-full absolute bottom-0 z-30 px-2 pb-2 md:px-4 md:pb-4 flex items-end justify-center pointer-events-none">
+            <div
+                className="w-full absolute bottom-0 z-30 px-2 pb-2 md:px-4 md:pb-4 flex items-end justify-center pointer-events-none">
 
                 {/* 1. Hero Hand Cards */}
                 {/* 手机端: 放在左下角或者稍微靠左，不要挡住中间 */}
                 {heroPlayer && heroPlayer.cards && (
-                    <div className="absolute bottom-[80px] md:bottom-[100px] left-1/2 -translate-x-1/2 flex gap-0.5 md:gap-1 z-40 transition-all duration-300">
-                        <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="-rotate-3 origin-bottom-right transform scale-90 md:scale-110">
-                            <Card rank={heroPlayer.cards[0].rank as any} suite={heroPlayer.cards[0].suite as any} size="lg" className="shadow-2xl" />
+                    <div
+                        className="absolute bottom-[80px] md:bottom-[100px] left-1/2 -translate-x-1/2 flex gap-0.5 md:gap-1 z-40 transition-all duration-300">
+                        <motion.div initial={{y: 50, opacity: 0}} animate={{y: 0, opacity: 1}}
+                                    className="-rotate-3 origin-bottom-right transform scale-90 md:scale-110">
+                            <Card rank={heroPlayer.cards[0].rank as any} suite={heroPlayer.cards[0].suite as any}
+                                  size="lg" className="shadow-2xl"/>
                         </motion.div>
-                        <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="rotate-3 origin-bottom-left transform scale-90 md:scale-110">
-                            <Card rank={heroPlayer.cards[1].rank as any} suite={heroPlayer.cards[1].suite as any} size="lg" className="shadow-2xl" />
+                        <motion.div initial={{y: 50, opacity: 0}} animate={{y: 0, opacity: 1}}
+                                    className="rotate-3 origin-bottom-left transform scale-90 md:scale-110">
+                            <Card rank={heroPlayer.cards[1].rank as any} suite={heroPlayer.cards[1].suite as any}
+                                  size="lg" className="shadow-2xl"/>
                         </motion.div>
                     </div>
                 )}
 
                 {/* 2. Controls */}
                 {isMyTurn && (
-                    <div className="w-full max-w-xl flex items-end gap-2 animate-in slide-in-from-bottom-10 fade-in duration-200 mb-1">
+                    <div
+                        className="w-full max-w-xl flex items-end gap-2 animate-in slide-in-from-bottom-10 fade-in duration-200 mb-1">
                         {/* FOLD */}
                         <Button
                             onClick={() => handleAction('FOLD')}
@@ -276,14 +330,16 @@ export default function PokerRoom() {
                         </Button>
 
                         {/* RAISE Slider & Button */}
-                        <div className="flex-[2] flex gap-2 bg-black/60 p-1.5 rounded-lg border border-white/10 backdrop-blur-md items-center h-10 md:h-auto md:block md:p-2">
+                        <div
+                            className="flex-[2] flex gap-2 bg-black/60 p-1.5 rounded-lg border border-white/10 backdrop-blur-md items-center h-10 md:h-auto md:block md:p-2">
                             {/* Mobile: 简化 Slider 展示 */}
                             <div className="hidden md:block">
                                 <div className="flex justify-between text-xs text-slate-300 px-1 mb-1">
                                     <span>Raise</span>
                                     <span className="text-gold-main font-mono">${raiseAmount}</span>
                                 </div>
-                                <Slider value={raiseAmount} onValueChange={setRaiseAmount} min={20} max={heroPlayer?.chips} step={10} className="mb-2" />
+                                <Slider value={raiseAmount} onValueChange={setRaiseAmount} min={20}
+                                        max={heroPlayer?.chips} step={10} className="mb-2"/>
                             </div>
 
                             <Button
